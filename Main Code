@@ -1,0 +1,94 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy import stats
+
+
+
+# Load the CSV file (use the correct file name)
+df = pd.read_csv("/digital_diet_mental_health.csv")
+
+# Display first few rows
+print(df.head())
+
+# Clean column names
+df.columns = df.columns.str.strip().str.replace(' ', '_').str.replace(r'[^\w]', '', regex=True)
+
+mean_screen_time = df['daily_screen_time_hours'].mean()
+var_screen_time = df['daily_screen_time_hours'].var()
+
+print("Mean daily screen time:", mean_screen_time)
+print("Variance of daily screen time:", var_screen_time)
+
+# Create bins and labels
+bins = [0, 2, 4, 6, 8, 10]
+labels = ['0-2', '2-4', '4-6', '6-8', '8-10']
+
+# Create a new binned column
+df['Time_Bin'] = pd.cut(df['daily_screen_time_hours'], bins=bins, labels=labels, right=False)
+freq_dist = df['Time_Bin'].value_counts().sort_index()
+
+print("\nFrequency Distribution:\n", freq_dist)
+
+# Histogram
+freq_dist.plot(kind='bar', color='skyblue', edgecolor='black')
+plt.title('Histogram of Daily Screen Time')
+plt.xlabel('Screen Time Interval (hours)')
+plt.ylabel('Frequency')
+plt.show()
+
+# Pie Chart
+freq_dist.plot.pie(autopct='%1.1f%%', startangle=90)
+plt.title('Daily Screen Time Distribution')
+plt.ylabel('')
+plt.show()
+
+midpoints = [1, 3, 5, 7, 9]
+frequencies = freq_dist.values
+
+grouped_mean = sum(f * m for f, m in zip(frequencies, midpoints)) / sum(frequencies)
+grouped_var = sum(f * (m - grouped_mean) ** 2 for f, m in zip(frequencies, midpoints)) / sum(frequencies)
+
+print("Grouped Mean:", grouped_mean)
+print("Grouped Variance:", grouped_var)
+
+# Split into training and test sets
+train = df.sample(frac=0.8, random_state=1)
+test = df.drop(train.index)
+
+n = len(train)
+mean = train['daily_screen_time_hours'].mean()
+std = train['daily_screen_time_hours'].std()
+
+# 95% Confidence Interval
+t_score = stats.t.ppf(0.975, df=n-1)
+moe = t_score * std / np.sqrt(n)
+ci = (mean - moe, mean + moe)
+print("95% Confidence Interval for Mean:", ci)
+
+# 95% Tolerance Interval
+k = stats.norm.ppf(0.975) * np.sqrt(1 + 1/n)
+ti = (mean - k * std, mean + k * std)
+print("95% Tolerance Interval:", ti)
+
+# Validation
+valid = test['daily_screen_time_hours'].between(ti[0], ti[1]).mean() * 100
+print(f"Validation: {valid:.2f}% of test data within tolerance interval")
+
+# Create groups based on median mental health score
+threshold = df['mental_health_score'].median()
+df['mental_health_label'] = df['mental_health_score'].apply(lambda x: 'Good' if x >= threshold else 'Poor')
+
+# Hypothesis test
+low = df[df['mental_health_label'] == 'Good']['daily_screen_time_hours']
+high = df[df['mental_health_label'] == 'Poor']['daily_screen_time_hours']
+
+t_stat, p_value = stats.ttest_ind(high, low, equal_var=False)
+print("T-statistic:", t_stat)
+print("One-sided p-value:", p_value / 2)
+
+if p_value / 2 < 0.05:
+    print("Conclusion: Reject H₀ — Higher screen time is linked with poorer mental health")
+else:
+    print("Conclusion: Fail to reject H₀")
+
